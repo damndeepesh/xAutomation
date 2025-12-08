@@ -1,0 +1,6 @@
+python-telegram-bot
+google-generativeai
+tweepy
+python-dotenv
+urllib3<2
+importlib-metadata

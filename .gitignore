@@ -1,0 +1,17 @@
+# Environment variables
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+.venv/
+
+# macOS
+.DS_Store
+
+# Project specific
+temp_*
+debug_*.py
