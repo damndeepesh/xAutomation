@@ -113,8 +113,7 @@ class LLMService:
                                     "content": prompt,
                                 }
                             ],
-                            model="meta-llama/llama-4-scout-17b-16e-instruct"
-, 
+                            model="meta-llama/llama-4-scout-17b-16e-instruct", 
                         )
                         text = chat_completion.choices[0].message.content.strip()
                         logging.info("Groq fallback generation successful.")
