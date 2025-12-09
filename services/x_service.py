@@ -66,6 +66,10 @@ class XService:
             response = self.client.create_tweet(text=text, media_ids=media_ids if media_ids else None)
             logging.info(f"Tweet posted successfully: {response}")
             return True
+        except tweepy.errors.TooManyRequests as e:
+             logging.error(f"Error posting tweet (429 Too Many Requests): {e}")
+             logging.error("LIMIT REACHED: You have hit the X API Free Tier limit (likely 17 posts/24h). Try again later.")
+             return False
         except tweepy.errors.Forbidden as e:
             logging.error(f"Error posting tweet (403 Forbidden): {e}")
             logging.error(f"Full Error Response: {e.response.text if hasattr(e, 'response') else 'No response body'}")
