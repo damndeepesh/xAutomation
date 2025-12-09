@@ -1,6 +1,7 @@
 import tweepy
 import config
 import logging
+import os
 
 class XService:
     def __init__(self):
@@ -55,6 +56,21 @@ class XService:
         Posts a tweet to X, optionally with media.
         """
         try:
+            key = os.getenv("TWITTER_API_KEY")
+            secret = os.getenv("TWITTER_API_SECRET")
+            token = os.getenv("TWITTER_ACCESS_TOKEN")
+            token_secret = os.getenv("TWITTER_ACCESS_TOKEN_SECRET")
+            
+            # Re-init client to ensure fresh auth (Fixes 403 Forbidden issue)
+            debug_client = tweepy.Client(
+                consumer_key=key,
+                consumer_secret=secret,
+                access_token=token,
+                access_token_secret=token_secret
+            )
+            
+            logging.info(f"Attempting to post: {text}")
+            
             media_ids = []
             if media_paths:
                 logging.info(f"Uploading {len(media_paths)} images...")
@@ -63,7 +79,7 @@ class XService:
                     media_ids.append(str(media.media_id))
                     logging.info(f"Uploaded media ID: {media.media_id}")
 
-            response = self.client.create_tweet(text=text, media_ids=media_ids if media_ids else None)
+            response = debug_client.create_tweet(text=text, media_ids=media_ids if media_ids else None)
             logging.info(f"Tweet posted successfully: {response}")
             return True
         except tweepy.errors.TooManyRequests as e:

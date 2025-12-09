@@ -7,9 +7,18 @@ from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, Messa
 import config
 from services.llm_service import LLMService
 from services.x_service import XService
+from services.automation_service import AutomationService
+from apscheduler.schedulers.background import BackgroundScheduler
+import re
+from utils.calendar_utils import create_calendar, process_calendar_selection, CALENDAR_CALLBACK
 
 # Define states for ConversationHandler
 TOPIC, TONE, REVIEW = range(3)
+# Define states for Automation Handler
+AUTO_DATES, AUTO_COUNT, AUTO_THEMES = range(3, 6)
+# Callback data prefix for themes
+THEME_PREFIX = "THEME_"
+DONE_ACTION = "DONE_THEMES"
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -18,6 +27,13 @@ logging.basicConfig(
 
 llm_service = LLMService()
 x_service = XService()
+automation_service = AutomationService()
+
+# Scheduler Setup
+scheduler = BackgroundScheduler()
+# Run check_and_post every 30 minutes
+scheduler.add_job(automation_service.check_and_post, 'interval', minutes=30)
+scheduler.start()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text="Hi! Send me a topic or thought, and I'll generate a tweet for you.")
@@ -153,6 +169,127 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text="Operation cancelled.")
     return ConversationHandler.END
 
+async def automate_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    status = automation_service.get_status()
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id, 
+        text=f"🤖 **Away Mode Configuration**\n\nCurrent Status:\n{status}\n\n"
+             "📆 **Select Start Date:**",
+        reply_markup=create_calendar() # Show calendar for Start Date
+    )
+    context.user_data['cal_step'] = 'START' # Track which date we are picking
+    return AUTO_DATES
+
+async def handle_calendar_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Process selection
+    selected_date, is_selected = process_calendar_selection(update, context)
+    
+    if is_selected:
+        step = context.user_data.get('cal_step')
+        
+        if step == 'START':
+            context.user_data['auto_start'] = selected_date
+            context.user_data['cal_step'] = 'END'
+            
+            # Show next calendar
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id, 
+                text=f"✅ Start Date: {selected_date}\n\n📆 **Select End Date:**",
+                reply_markup=create_calendar()
+            )
+            return AUTO_DATES
+            
+        elif step == 'END':
+            context.user_data['auto_end'] = selected_date
+            
+            # Dates Done, move to Count
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id, 
+                text=f"✅ Dates set: {context.user_data['auto_start']} to {selected_date}.\n\nHow many tweets per day? (Enter a number, e.g., 2)"
+            )
+            return AUTO_COUNT
+            
+    return AUTO_DATES
+
+async def auto_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    if text.isdigit():
+        context.user_data['auto_count'] = int(text)
+        
+        # Predefined themes
+        themes = ["AI News", "Python Tips", "Tech Humor", "Coding Life", "Motivation", "Startup Advice", "Deep Learning"]
+        context.user_data['available_themes'] = themes
+        context.user_data['selected_themes'] = []
+        
+        await show_theme_selection(update, context)
+        return AUTO_THEMES
+    
+    else:
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="Please enter a valid number.")
+        return AUTO_COUNT
+
+async def show_theme_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    themes = context.user_data.get('available_themes', [])
+    selected = context.user_data.get('selected_themes', [])
+    
+    keyboard = []
+    row = []
+    for theme in themes:
+        is_selected = theme in selected
+        label = f"{'✅ ' if is_selected else ''}{theme}"
+        row.append(InlineKeyboardButton(label, callback_data=f"{THEME_PREFIX}{theme}"))
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    
+    keyboard.append([InlineKeyboardButton("Done ✅", callback_data=DONE_ACTION)])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    text = "Select themes (pick at least 1):"
+    if selected:
+        text += f"\n\nSelected: {', '.join(selected)}"
+        
+    if update.callback_query:
+        await update.callback_query.edit_message_text(text=text, reply_markup=reply_markup)
+    else:
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=text, reply_markup=reply_markup)
+
+async def handle_theme_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    
+    if data == DONE_ACTION:
+        selected = context.user_data.get('selected_themes', [])
+        if not selected:
+            await query.answer("Please select at least one theme!", show_alert=True)
+            return AUTO_THEMES
+        
+        # Start Automation
+        automation_service.start_automation(
+            context.user_data['auto_start'],
+            context.user_data['auto_end'],
+            context.user_data['auto_count'],
+            selected
+        )
+        await query.edit_message_text(text=f"✅ Automation Confirmed!\nThemes: {', '.join(selected)}")
+        return ConversationHandler.END
+        
+    elif data.startswith(THEME_PREFIX):
+        theme = data[len(THEME_PREFIX):]
+        selected = context.user_data.get('selected_themes', [])
+        
+        if theme in selected:
+            selected.remove(theme)
+        else:
+            selected.append(theme)
+            
+        context.user_data['selected_themes'] = selected
+        await show_theme_selection(update, context)
+        return AUTO_THEMES
+
 if __name__ == '__main__':
     if not config.TELEGRAM_BOT_TOKEN:
         print("Error: TELEGRAM_BOT_TOKEN not found in .env")
@@ -180,6 +317,18 @@ if __name__ == '__main__':
         fallbacks=[CommandHandler('cancel', cancel, filters=user_filter)]
     )
 
+    auto_handler = ConversationHandler(
+        entry_points=[CommandHandler('away', automate_start, filters=user_filter)],
+        states={
+            AUTO_DATES: [CallbackQueryHandler(handle_calendar_date, pattern=f"^{CALENDAR_CALLBACK}")],
+            AUTO_COUNT: [MessageHandler(filters.TEXT & (~filters.COMMAND) & user_filter, auto_count)],
+            AUTO_THEMES: [CallbackQueryHandler(handle_theme_selection)],
+        },
+        fallbacks=[CommandHandler('cancel', cancel, filters=user_filter)]
+    )
+
+
+    application.add_handler(auto_handler)
     application.add_handler(conv_handler)
 
     # Run the bot
