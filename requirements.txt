@@ -5,3 +5,4 @@ python-dotenv
 urllib3<2
 importlib-metadata
 APScheduler
+groq

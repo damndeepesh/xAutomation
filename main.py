@@ -73,6 +73,13 @@ async def handle_tone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tweet_a = llm_service.generate_tweet(user_topic, tone=tone_a)
         tweet_b = llm_service.generate_tweet(user_topic, tone=tone_b)
         
+        if not tweet_a or not tweet_b:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id, 
+                text="⚠️ Failed to generate one or both tweet variants. Please try again with a different topic."
+            )
+            return ConversationHandler.END
+
         context.user_data['tweet_a'] = tweet_a
         context.user_data['tweet_b'] = tweet_b
         context.user_data['mode'] = 'ab'
@@ -95,6 +102,14 @@ async def handle_tone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(text=f"Generating {tone} tweet for: {user_topic}...")
         
         generated_tweet = llm_service.generate_tweet(user_topic, tone=tone)
+        
+        if not generated_tweet:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id, 
+                text="⚠️ Failed to generate a valid tweet (length limit or content policy). Please try a different topic."
+            )
+            return ConversationHandler.END
+
         context.user_data['tweet'] = generated_tweet
         
         await context.bot.send_message(
