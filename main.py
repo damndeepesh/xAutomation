@@ -137,6 +137,53 @@ async def handle_review(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_input = update.message.text.strip()
     
+    # Handle Regeneration Request
+    if user_input.lower() in ['change', 'retry', 'regenerate']:
+        user_topic = context.user_data.get('topic')
+        
+        # Check if we are in A/B mode
+        if context.user_data.get('mode') == 'ab':
+            tone_a = "Professional"
+            tone_b = "Human" 
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=f"🔄 Regenerating A/B variants for: {user_topic}...")
+            
+            tweet_a = llm_service.generate_tweet(user_topic, tone=tone_a)
+            tweet_b = llm_service.generate_tweet(user_topic, tone=tone_b)
+            
+            if not tweet_a or not tweet_b:
+                await context.bot.send_message(chat_id=update.effective_chat.id, text="⚠️ Failed to regenerate. Please try again or edit manually.")
+                return REVIEW
+                
+            context.user_data['tweet_a'] = tweet_a
+            context.user_data['tweet_b'] = tweet_b
+            
+            msg = (
+                f"🆚 **New A/B Variants**\n\n"
+                f"🅰️ **Option A ({tone_a}):**\n{tweet_a}\n\n"
+                f"🅱️ **Option B ({tone_b}):**\n{tweet_b}\n\n"
+                f"Reply 'A', 'B' to choose, or 'change' again."
+            )
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=msg, parse_mode='Markdown')
+            return REVIEW
+            
+        else:
+            # Single Tone Mode
+            tone = context.user_data.get('tone', 'Professional')
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=f"🔄 Regenerating {tone} tweet...")
+            
+            new_tweet = llm_service.generate_tweet(user_topic, tone=tone)
+            
+            if not new_tweet:
+                await context.bot.send_message(chat_id=update.effective_chat.id, text="⚠️ Failed to regenerate. Please edit manually.")
+                return REVIEW
+                
+            context.user_data['tweet'] = new_tweet
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id, 
+                text=f"🆕 **New Draft** ({tone}):\n\n{new_tweet}\n\nReply 'send' to post, 'change' to try again, or type your own version."
+            )
+            return REVIEW
+
     # Handle A/B Selection
     if context.user_data.get('mode') == 'ab':
         if user_input.upper() in ['A', 'OPTION A']:
