@@ -29,42 +29,45 @@ class LLMService:
         """
         prompts = {
             "Human": (
-                f"You are a brutally honest indie hacker building in public. "
+                f"You are a real person sharing a genuine thought or observation. "
                 f"Topic: {topic}. "
-                f"Tone: Raw, vulnerable, but highly ambitious. "
-                f"Share the painful truth about building a business. "
-                f"Make the reader feel your struggle and your win."
+                f"Tone: Casual, authentic, and conversational. "
+                f"Write as if texting a friend or making a quick note. "
+                f"Avoid buzzwords, dramatic hooks, or forced vulnerability."
             ),
             "Professional": (
-                f"You are a Top 1% Growth Hacker and Authority Figure. "
+                f"You are an experienced industry practitioner. "
                 f"Topic: {topic}. "
-                f"Tone: Authoritative, controversial, confidence-inspiring. "
-                f"Teach a masterclass in one tweet. "
-                f"Focus on ROI, leverage, and scaling."
+                f"Tone: Clear, direct, and professional. "
+                f"Share a specific insight or lesson learned. "
+                f"Focus on substance over hype. No 'masterclass' framing."
             ),
             "Funny": (
-                f"You are a cynical senior engineer who sees through all the hype. "
+                f"You have a dry, witty sense of humor. "
                 f"Topic: {topic}. "
-                f"Tone: Sarcastic, dry, witty. "
-                f"Roast the industry while dropping truth bombs."
+                f"Tone: Lighthearted, clever, perhaps a bit ironic. "
+                f"Make a funny observation about the topic. "
+                f"Avoid cliché 'roasts' or over-the-top sarcasm."
             ),
              "Logical": (
-                f"You are a Systems Thinker obsessed with efficiency. "
+                f"You are a rational thinker analyzing a system. "
                 f"Topic: {topic}. "
-                f"Tone: Cold, precise, high-signal. "
-                f"Cut through the noise. Facts only."
+                f"Tone: Objective, analytical, and precise. "
+                f"Break down the topic into a clear cause-and-effect or observation. "
+                f"Focus on the logic, not the persuasion."
             ),
              "Technical": (
-                f"You are the CTO everyone wants to hire. "
+                f"You are a developer sharing knowledge. "
                 f"Topic: {topic}. "
-                f"Tone: Deeply technical but accessible to smart people. "
-                f"Explain how things *actually* work under the hood."
+                f"Tone: Informative, helpful, and technically accurate. "
+                f"Explain a concept or tip simply but without dumbing it down. "
+                f"Focus on the 'how' and 'why'."
             ),
              "Mathematical": (
-                f"You are a quant trader applied to life. "
+                f"You look at the world through data and probability. "
                 f"Topic: {topic}. "
-                f"Tone: Probabilistic, analytical, game-theoretic. "
-                f"Frame everything as positive/negative expected value (EV)."
+                f"Tone: Data-driven, objective, and calculated. "
+                f"Frame the topic in terms of probability, trends, or numbers."
             )
         }
         
@@ -73,20 +76,20 @@ class LLMService:
         if style_instruction:
             base_prompt += f" STYLE INSTRUCTION: {style_instruction}"
         
-        # Simplified Prompt Structure for Brevity
+        # Simplified Prompt Structure for Brevity and Authenticity
         prompt = (
-            f"You are a {tone} expert. "
+            f"You are a {tone} voice. "
             f"Topic: {topic}. "
             f"Context: {base_prompt} "
             f"{'STYLE: ' + style_instruction if style_instruction else ''} "
             f"\n\n"
             f"STRICT INSTRUCTIONS:\n"
-            f"1. Write ONE high-impact tweet.\n"
+            f"1. Write ONE engaging, natural-sounding tweet.\n"
             f"2. TOTAL LENGTH MUST BE < 250 CHARACTERS (including hashtags).\n"
-            f"3. Structure: Insight -> CTA -> Hashtags.\n"
-            f"4. NO preambles, NO quotes, NO 'Here is a tweet'.\n"
-            f"5. Use exactly 2-3 hashtags: #AI #Tech #SaaS #BuildInPublic.\n"
-            f"6. Do not waste characters on fluff. Be concise."
+            f"3. Structure: Natural flow. Avoid robotic 'Here is a tweet' preambles or forced structures.\n"
+            f"4. NO hashtags in the middle of sentences. Put them at the end.\n"
+            f"5. Use 1-3 relevant hashtags (e.g., #AI, #Tech, #SaaS). Only if they fit.\n"
+            f"6. Do not sound like a marketing bot. Be human."
         )
         
         
