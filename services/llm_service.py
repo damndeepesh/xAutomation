@@ -73,18 +73,20 @@ class LLMService:
         if style_instruction:
             base_prompt += f" STYLE INSTRUCTION: {style_instruction}"
         
+        # Simplified Prompt Structure for Brevity
         prompt = (
-            f"{base_prompt} "
-            f"STRICT CONSTRAINT: Tweet MUST be < 280 chars. NO fluff. "
-            f"ROLE: World-Class Copywriter & Marketing Master. "
-            f"GOAL: Maximize views, replies, and profile clicks (Revenue Focus). "
-            f"STRATEGY (The 'Virality Formula'): "
-            f"1. HOOK: Stop the scroll immediately. Use a polarizing opinion, a hard truth, or a 'you're doing it wrong' angle. "
-            f"2. VALUE: Give one massive insight or 'aha' moment. "
-            f"3. CTA: Ask a question that demands an answer or tell them to build. "
-            f"TONE: Confident, edgy, authoritative. Create FOMO. "
-            f"HASHTAGS: Use exactly 2-3 of: #AI #TechTwitter #BuildInPublic #SaaS #Coding #Entrepreneurship. "
-            f"Simply the tweet text. Zero formatting."
+            f"You are a {tone} expert. "
+            f"Topic: {topic}. "
+            f"Context: {base_prompt} "
+            f"{'STYLE: ' + style_instruction if style_instruction else ''} "
+            f"\n\n"
+            f"STRICT INSTRUCTIONS:\n"
+            f"1. Write ONE high-impact tweet.\n"
+            f"2. TOTAL LENGTH MUST BE < 250 CHARACTERS (including hashtags).\n"
+            f"3. Structure: Insight -> CTA -> Hashtags.\n"
+            f"4. NO preambles, NO quotes, NO 'Here is a tweet'.\n"
+            f"5. Use exactly 2-3 hashtags: #AI #Tech #SaaS #BuildInPublic.\n"
+            f"6. Do not waste characters on fluff. Be concise."
         )
         
         
