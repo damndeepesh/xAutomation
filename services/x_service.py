@@ -41,6 +41,10 @@ class XService:
             access_level = self.api.last_response.headers.get('x-access-level', 'unknown')
             logging.info(f"X API Access Level: {access_level.upper()}")
             
+            # DEBUG: Log masked token to verify it matches local
+            masked_token = self.access_token[:10] + "..." if self.access_token else "NONE"
+            logging.info(f"Using Access Token (Masked): {masked_token}")
+            
             if 'write' not in access_level.lower():
                 logging.error("CRITICAL: Your Access Token is READ-ONLY. You MUST regenerate it to get Write permissions.")
         except Exception as e:
