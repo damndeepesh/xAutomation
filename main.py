@@ -2,6 +2,7 @@ import logging
 import os
 import logging
 import os
+import sys
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackQueryHandler
 import config
@@ -39,7 +40,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text="Hi! Send me a topic or thought, and I'll generate a tweet for you.")
     return TOPIC
 
+async def check_terminate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Checks if the user sent 'terminate' and resets the flow if so."""
+    if update.message and update.message.text and update.message.text.strip().lower() == 'terminate':
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id, 
+            text="🛑 Operation terminated. Reseting to start... Send me a new topic."
+        )
+        # Clear context
+        keys_to_clear = ['topic', 'tone', 'mode', 'tweet', 'tweet_a', 'tweet_b', 'media_paths', 'auto_start', 'auto_end', 'auto_count', 'selected_themes', 'cal_step']
+        for key in keys_to_clear:
+            context.user_data.pop(key, None)
+            
+        return True
+    return False
+
 async def handle_topic(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Check terminate
+    if await check_terminate(update, context):
+        return TOPIC
+
     user_topic = update.message.text
     context.user_data['topic'] = user_topic # Save topic
     # Reset media on new topic
@@ -54,6 +74,14 @@ async def handle_topic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Topic: {user_topic}\n\nChoose a tone:", reply_markup=reply_markup)
+    return TONE
+
+async def handle_tone_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles text input during TONE state (mainly for terminate)."""
+    if await check_terminate(update, context):
+        return TOPIC
+    
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="Please select a tone from the buttons above, or type 'terminate' to restart.")
     return TONE
 
 async def handle_tone(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -79,7 +107,7 @@ async def handle_tone(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text="⚠️ Failed to generate one or both tweet variants. Please try again with a different topic."
             )
             return ConversationHandler.END
-
+            
         context.user_data['tweet_a'] = tweet_a
         context.user_data['tweet_b'] = tweet_b
         context.user_data['mode'] = 'ab'
@@ -104,11 +132,12 @@ async def handle_tone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         generated_tweet = llm_service.generate_tweet(user_topic, tone=tone)
         
         if not generated_tweet:
+            # Send message + return TOPIC to allow retry immediately
             await context.bot.send_message(
                 chat_id=update.effective_chat.id, 
-                text="⚠️ Failed to generate a valid tweet (length limit or content policy). Please try a different topic."
+                text="⚠️ Failed to generate a valid tweet (length limit or content policy). Send me a new topic to try again."
             )
-            return ConversationHandler.END
+            return TOPIC # Changed from END to TOPIC for better flow
 
         context.user_data['tweet'] = generated_tweet
         
@@ -119,6 +148,14 @@ async def handle_tone(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return REVIEW
 
 async def handle_review(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_input = update.message.text
+    if user_input:
+        user_input = user_input.strip()
+        if user_input.lower() == 'terminate':
+             # Use the common check logic manually here since we need to return
+             await context.bot.send_message(chat_id=update.effective_chat.id, text="🛑 Operation terminated. Send me a new topic.")
+             return TOPIC
+
     # Check for Photo
     if update.message.photo:
         # Get the largest photo file
@@ -134,8 +171,6 @@ async def handle_review(update: Update, context: ContextTypes.DEFAULT_TYPE):
         count = len(context.user_data['media_paths'])
         await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Photo attached! ({count} total). Reply 'send' to post or attach more.")
         return REVIEW
-
-    user_input = update.message.text.strip()
     
     # Handle Regeneration Request
     if user_input.lower() in ['change', 'retry', 'regenerate']:
@@ -273,7 +308,25 @@ async def handle_calendar_date(update: Update, context: ContextTypes.DEFAULT_TYP
             
     return AUTO_DATES
 
+async def check_terminate_auto(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Special terminate check for automation flow that might need to return END."""
+    # Logic similar to check_terminate but might need handled differently if we want to reset entire state
+    return await check_terminate(update, context)
+
+async def auto_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles text input during AUTO dates (for terminate) and AUTO count."""
+    if await check_terminate(update, context):
+        return ConversationHandler.END # End the auto convo, but since we cleared data, user can /start
+        
+    # If we are in AUTO_COUNT state specifically
+    # But since we need to distinguish, we might need separate handlers.
+    # Actually, we can just look at state if we were inside the handler... but standard handlers are separate.
+    return AUTO_DATES 
+
 async def auto_count(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if await check_terminate(update, context):
+        return ConversationHandler.END
+
     text = update.message.text.strip()
     if text.isdigit():
         context.user_data['auto_count'] = int(text)
@@ -370,10 +423,17 @@ if __name__ == '__main__':
             print("Error: ALLOWED_TELEGRAM_USER_ID is not a valid integer. Allowed checks disabled.")
 
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start, filters=user_filter)],
+        entry_points=[
+            CommandHandler('start', start, filters=user_filter),
+            # Allow starting directly with a topic text
+            MessageHandler(filters.TEXT & (~filters.COMMAND) & user_filter, handle_topic)
+        ],
         states={
             TOPIC: [MessageHandler(filters.TEXT & (~filters.COMMAND) & user_filter, handle_topic)],
-            TONE: [CallbackQueryHandler(handle_tone)],
+            TONE: [
+                CallbackQueryHandler(handle_tone),
+                MessageHandler(filters.TEXT & (~filters.COMMAND) & user_filter, handle_tone_input)
+            ],
             REVIEW: [MessageHandler((filters.TEXT | filters.PHOTO) & (~filters.COMMAND) & user_filter, handle_review)],
         },
         fallbacks=[CommandHandler('cancel', cancel, filters=user_filter)]
@@ -382,7 +442,10 @@ if __name__ == '__main__':
     auto_handler = ConversationHandler(
         entry_points=[CommandHandler('away', automate_start, filters=user_filter)],
         states={
-            AUTO_DATES: [CallbackQueryHandler(handle_calendar_date, pattern=f"^{CALENDAR_CALLBACK}")],
+            AUTO_DATES: [
+                CallbackQueryHandler(handle_calendar_date, pattern=f"^{CALENDAR_CALLBACK}"),
+                MessageHandler(filters.TEXT & (~filters.COMMAND) & user_filter, auto_count) # Reuse auto_count check logic or need specific terminate
+            ],
             AUTO_COUNT: [MessageHandler(filters.TEXT & (~filters.COMMAND) & user_filter, auto_count)],
             AUTO_THEMES: [CallbackQueryHandler(handle_theme_selection)],
         },
@@ -393,10 +456,14 @@ if __name__ == '__main__':
     application.add_handler(auto_handler)
     application.add_handler(conv_handler)
 
+
     # Run the bot
     webhook_url = os.getenv("WEBHOOK_URL")
     
-    if webhook_url:
+    # Check for polling args (support typos like -pooling)
+    is_polling = any(arg in sys.argv for arg in ["--polling", "-polling", "-p", "polling"])
+    
+    if webhook_url and not is_polling:
         port = int(os.getenv("PORT", "8443"))
         logging.info(f"Starting in WEBHOOK mode on port {port}...")
         
